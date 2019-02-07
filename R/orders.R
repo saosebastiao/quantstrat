@@ -29,12 +29,12 @@
 #' @export getOrderBook
 get.orderbook <- getOrderBook <- function(portfolio, envir=.strategy) #should symbol subsets be supported too?  probably not.
 { 
-    if(!grepl("order_book",portfolio)) orders<-try(get(paste("order_book",portfolio,sep='.'),envir=envir),silent=TRUE)
-    else orders<-try(get(portfolio,envir=envir),silent=TRUE)
-    if(inherits(orders,"try-error"))
-        stop(paste("Orders for ",portfolio," not found, use initOrders() to create a new order book for this portfolio"))
-    if(!inherits(orders,"order_book")) stop("Order Book for portfolio",portfolio,"does not appear to name an order book object.")
-    return(orders)
+  if(!grepl("order_book",portfolio)) orders<-try(get(paste("order_book",portfolio,sep='.'),envir=envir),silent=TRUE)
+  else orders<-try(get(portfolio,envir=envir),silent=TRUE)
+  if(inherits(orders,"try-error"))
+    stop(paste("Orders for ",portfolio," not found, use initOrders() to create a new order book for this portfolio"))
+  if(!inherits(orders,"order_book")) stop("Order Book for portfolio",portfolio,"does not appear to name an order book object.")
+  return(orders)
 }
 
 #' put an orderbook object in .strategy env
@@ -46,9 +46,9 @@ get.orderbook <- getOrderBook <- function(portfolio, envir=.strategy) #should sy
 #' @export
 put.orderbook <- function(portfolio.st, orderbook, envir=.strategy)
 {
-    strategy.orderbook.st <- paste('order_book', portfolio.st, sep='.')
-
-    assign(strategy.orderbook.st, orderbook, envir=envir)
+  strategy.orderbook.st <- paste('order_book', portfolio.st, sep='.')
+  
+  assign(strategy.orderbook.st, orderbook, envir=envir)
 }
 
 #' initialize order container
@@ -66,28 +66,28 @@ put.orderbook <- function(portfolio.st, orderbook, envir=.strategy)
 #' @export
 initOrders <- function(portfolio=NULL, symbols=NULL, initDate = '1950-01-01', ...)
 {
-    # NOTE we could store all of these in one object, but I think that might get big
-    orders<- try(getOrderBook(portfolio),silent=TRUE)
-    if(inherits(orders,"order_book")) {
-        stop(paste("Order Book for portfolio",portfolio,"already exists."))
-    } else {
-        orders<-list()
-        orders[[portfolio]]<-list()
-    }
-    ordertemplate<-xts(as.matrix(t(c(0,NA,"init","long",0,"closed",as.character(as.POSIXct(initDate)),'','',0,'',''))),order.by=as.POSIXct(initDate), ...=...)
-    colnames(ordertemplate) <- c("Order.Qty","Order.Price","Order.Type","Order.Side","Order.Threshold","Order.Status","Order.StatusTime","Prefer", "Order.Set","Txn.Fees","Rule","Time.In.Force")
-
-    if(is.null(symbols)) {
-        pfolio<-.getPortfolio(portfolio)
-        symbols<-ls(pfolio$symbols)
-    }
-    if(!is.null(symbols)){
-        orders[[portfolio]][symbols] <- list(NULL)
-    } else {
-        stop("You must specify a symbols list or a valid portfolio to retrieve the list from.")
-    }
-    class(orders)<-"order_book"
-    assign(paste("order_book",portfolio,sep='.'),orders,envir=.strategy)
+  # NOTE we could store all of these in one object, but I think that might get big
+  orders<- try(getOrderBook(portfolio),silent=TRUE)
+  if(inherits(orders,"order_book")) {
+    stop(paste("Order Book for portfolio",portfolio,"already exists."))
+  } else {
+    orders<-list()
+    orders[[portfolio]]<-list()
+  }
+  ordertemplate<-xts(as.matrix(t(c(0,NA,"init","long",0,"closed",as.character(as.POSIXct(initDate)),'','',0,'',''))),order.by=as.POSIXct(initDate), ...=...)
+  colnames(ordertemplate) <- c("Order.Qty","Order.Price","Order.Type","Order.Side","Order.Threshold","Order.Status","Order.StatusTime","Prefer", "Order.Set","Txn.Fees","Rule","Time.In.Force")
+  
+  if(is.null(symbols)) {
+    pfolio<-.getPortfolio(portfolio)
+    symbols<-ls(pfolio$symbols)
+  }
+  if(!is.null(symbols)){
+    orders[[portfolio]][symbols] <- list(NULL)
+  } else {
+    stop("You must specify a symbols list or a valid portfolio to retrieve the list from.")
+  }
+  class(orders)<-"order_book"
+  assign(paste("order_book",portfolio,sep='.'),orders,envir=.strategy)
 }
 
 #' get orders by time span, status, type, and side
@@ -109,66 +109,71 @@ initOrders <- function(portfolio=NULL, symbols=NULL, initDate = '1950-01-01', ..
 #' @seealso addOrder
 #' @concept order book
 #' @export
-getOrders <- function(portfolio,symbol,status="open",timespan=NULL,ordertype=NULL, side=NULL, qtysign=NULL, orderset=NULL, which.i=FALSE)
+getOrders <- function(portfolio,symbol,status="open",timespan=NULL,ordertype=NULL, side=NULL, qtysign=NULL, orderset=NULL, label=NULL,which.i=FALSE)
 {
-    #if(is.null(timespan)) stop("timespan must be an xts style timestring")
-    # get order book
-    orderbook <- getOrderBook(portfolio)
-    if(length(symbol) > 1L) {
-        symbol <- symbol[1L]  # only one symbol at a time is currently supported
-        warning("Only single instruments are currently supported. Using first symbol only.")
-    }
-    if(!any(names(orderbook[[portfolio]]) == symbol)) {
-        stop("symbol ", symbol, " does not exist in portfolio ", portfolio,
-             ", which has symbols: ", paste(names(orderbook[[portfolio]]), collapse=", "))
-    }
-
-    ordersubset <- orderbook[[portfolio]][[symbol]]
-    if(is.null(ordersubset))
-        return(NULL)
-
-    # Only do logical comparisons for non-NULL arguments. Use coredata to avoid
-    # Ops.xts, since we don't need any xts functionality to find indices
-    indices <- NULL
-    ordercoredata <- coredata(ordersubset)
-    if(!is.null(status)) {
-        status <- match.arg(status, c("open", "closed", "canceled", "revoked", "replaced", "rejected"))
-        ind <- ordercoredata[,"Order.Status"] == status
-        indices <- if(is.null(indices)) ind else ind & indices
-    }
-    if(!is.null(ordertype)) {
-        ordertype <- match.arg(ordertype, c("market", "limit", "stoplimit", "stoptrailing", "iceberg"))
-        ind <- ordercoredata[,"Order.Type"] == ordertype
-        indices <- if(is.null(indices)) ind else ind & indices
-    }
-    if(!is.null(side)) {
-        side <- match.arg(side, c("long", "short"))
-        ind <- ordercoredata[,"Order.Side"] == side
-        indices <- if(is.null(indices)) ind else ind & indices
-    }
-    if(!is.null(orderset)) {
-        ind <- ordercoredata[,"Order.Set"] == orderset
-        indices <- if(is.null(indices)) ind else ind & indices
-    }
-    if(!is.null(qtysign)) {
-        ind <- sign(as.numeric(ordercoredata[,"Order.Qty"])) == qtysign
-        indices <- if(is.null(indices)) ind else ind & indices
-    }
-
-    if(is.null(indices))
-        indices <- 1L:nrow(ordersubset)
-    else
-        indices <- which(indices)
-
-    if(isTRUE(which.i)){
-        return(indices)
-    } else {
-        # extract
-        ordersubset<-orderbook[[portfolio]][[symbol]][indices,]
-        #subset by time
-        if(nrow(ordersubset)>1 && !is.null(timespan)) ordersubset<-ordersubset[timespan]
-        return(ordersubset)
-    }
+  print("boop")
+  #if(is.null(timespan)) stop("timespan must be an xts style timestring")
+  # get order book
+  orderbook <- getOrderBook(portfolio)
+  if(length(symbol) > 1L) {
+    symbol <- symbol[1L]  # only one symbol at a time is currently supported
+    warning("Only single instruments are currently supported. Using first symbol only.")
+  }
+  if(!any(names(orderbook[[portfolio]]) == symbol)) {
+    stop("symbol ", symbol, " does not exist in portfolio ", portfolio,
+         ", which has symbols: ", paste(names(orderbook[[portfolio]]), collapse=", "))
+  }
+  
+  ordersubset <- orderbook[[portfolio]][[symbol]]
+  if(is.null(ordersubset))
+    return(NULL)
+  
+  # Only do logical comparisons for non-NULL arguments. Use coredata to avoid
+  # Ops.xts, since we don't need any xts functionality to find indices
+  indices <- NULL
+  ordercoredata <- coredata(ordersubset)
+  if(!is.null(status)) {
+    status <- match.arg(status, c("open", "closed", "canceled", "revoked", "replaced", "rejected"))
+    ind <- ordercoredata[,"Order.Status"] == status
+    indices <- if(is.null(indices)) ind else ind & indices
+  }
+  if(!is.null(ordertype)) {
+    ordertype <- match.arg(ordertype, c("market", "limit", "stoplimit", "stoptrailing", "iceberg"))
+    ind <- ordercoredata[,"Order.Type"] == ordertype
+    indices <- if(is.null(indices)) ind else ind & indices
+  }
+  if(!is.null(side)) {
+    side <- match.arg(side, c("long", "short"))
+    ind <- ordercoredata[,"Order.Side"] == side
+    indices <- if(is.null(indices)) ind else ind & indices
+  }
+  if(!is.null(orderset)) {
+    ind <- ordercoredata[,"Order.Set"] == orderset
+    indices <- if(is.null(indices)) ind else ind & indices
+  }
+  if(!is.null(qtysign)) {
+    ind <- sign(as.numeric(ordercoredata[,"Order.Qty"])) == qtysign
+    indices <- if(is.null(indices)) ind else ind & indices
+  }
+  if(!is.null(label)) {
+    ind <- ordercoredata[,"Rule"] == label
+    indices <- if(is.null(indices)) ind else ind & indices
+  }
+  
+  if(is.null(indices))
+    indices <- 1L:nrow(ordersubset)
+  else
+    indices <- which(indices)
+  
+  if(isTRUE(which.i)){
+    return(indices)
+  } else {
+    # extract
+    ordersubset<-orderbook[[portfolio]][[symbol]][indices,]
+    #subset by time
+    if(nrow(ordersubset)>1 && !is.null(timespan)) ordersubset<-ordersubset[timespan]
+    return(ordersubset)
+  }
 }
 
 #' add an order to the order book
@@ -296,168 +301,169 @@ addOrder <- function(portfolio,
                      time.in.force=''
 )
 {
-    # get order book
-    #orderbook <- getOrderBook(portfolio)
-    #if(!length(grep(symbol,names(orderbook[[portfolio]])))==1) stop(paste("symbol",symbol,"does not exist in portfolio",portfolio,"having symbols",names(orderbook[[portfolio]])))
-
-    #data quality checks
-    if(!is.numeric(qty) && !(qty=='all') && !(qty=='trigger')) stop (paste("Quantity must be numeric:",qty))
-    if(qty==0) stop("qty",qty,"must positive, negative, or 'all' or 'trigger'")
-    if(is.null(qty)) stop("qty",qty,"must not be NULL")
-    if(is.na(qty)) stop("qty",qty,"must not be NA")
-    if(!is.numeric(price)) stop (paste("Price must be numeric:",price))
-    if(is.null(price)) stop("price ",price," must not be NULL")
-    if(is.null(TxnFees)) stop("TxnFees ",TxnFees," must not be NULL")
-    if(is.na(price)) stop("order at timestamp ", timestamp, " must not have price of NA")
-    #spreads can have a zero price
-    #if(price==0) warning(paste(ordertype, "order for", qty, "has a price of zero."))
-
-    if(!is.null(side) & !length(grep(side,c('long','short')))==1) stop(paste("side:",side," must be one of 'long' or 'short'"))
-    if(is.na(charmatch(ordertype,c("market","limit","stoplimit","stoptrailing","iceberg")))) stop(paste("ordertype:",ordertype,' must be one of "market","limit","stoplimit","stoptrailing" or "iceberg"'))
-    if(!is.null(threshold) & length(price)>=1 )
+  # get order book
+  #orderbook <- getOrderBook(portfolio)
+  #if(!length(grep(symbol,names(orderbook[[portfolio]])))==1) stop(paste("symbol",symbol,"does not exist in portfolio",portfolio,"having symbols",names(orderbook[[portfolio]])))
+  
+  #data quality checks
+  if(!is.numeric(qty) && !(qty=='all') && !(qty=='trigger')) stop (paste("Quantity must be numeric:",qty))
+  if(qty==0) stop("qty",qty,"must positive, negative, or 'all' or 'trigger'")
+  if(is.null(qty)) stop("qty",qty,"must not be NULL")
+  if(is.na(qty)) stop("qty",qty,"must not be NA")
+  if(!is.numeric(price)) stop (paste("Price must be numeric:",price))
+  if(is.null(price)) stop("price ",price," must not be NULL")
+  if(is.null(TxnFees)) stop("TxnFees ",TxnFees," must not be NULL")
+  if(is.na(price)) stop("order at timestamp ", timestamp, " must not have price of NA")
+  #spreads can have a zero price
+  #if(price==0) warning(paste(ordertype, "order for", qty, "has a price of zero."))
+  
+  if(!is.null(side) & !length(grep(side,c('long','short')))==1) stop(paste("side:",side," must be one of 'long' or 'short'"))
+  if(is.na(charmatch(ordertype,c("market","limit","stoplimit","stoptrailing","iceberg")))) stop(paste("ordertype:",ordertype,' must be one of "market","limit","stoplimit","stoptrailing" or "iceberg"'))
+  if(!is.null(threshold) & length(price)>=1 )
+  {
+    if(length(grep(paste("^",ordertype,"$",sep=""),c("limit","stoplimit","stoptrailing","iceberg")))==1)
     {
-        if(length(grep(paste("^",ordertype,"$",sep=""),c("limit","stoplimit","stoptrailing","iceberg")))==1)
-        {
-            #we have a threshold set on a stop* order, process it
-            switch(ordertype,
-                limit =, 
-                iceberg =, 
-                stoplimit =, 
-                stoptrailing = {
-                    if(isTRUE(tmult))
-                    {
-                        threshold = price*threshold
-                        tmult=FALSE
-                    } 
-                    if(!is.null(side))
-                    {
-                        switch(ordertype,
-                            limit = {
-                                if((qty %in% c('all','trigger')) && side == 'long' || !(qty %in% c('all','trigger')) && as.numeric(qty) < 0) # SELL
-                                {
-                                    #this is a limit exit, so it will sell *higher* than the current market
-                                    if(threshold < 0) threshold = -threshold
-                                }
-                                else    # BUY
-                                {
-                                    #this is a limit exit, so it will buy *lower* than the current market
-                                    if(threshold > 0) threshold = -threshold
-                                }
-                            },
-                            stoplimit =,
-                            stoptrailing = {
-                                if((qty %in% c('all','trigger')) && side == 'long' || !(qty %in% c('all','trigger')) && as.numeric(qty) < 0) # SELL
-                                {
-                                    #this is a stop exit, so it will sell *lower* than the current market
-                                    if(threshold > 0) threshold = -threshold
-                                }
-                                else    # BUY
-                                {
-                                    #this is a stop exit, so it will buy *higher* than the current market
-                                    if(threshold < 0) threshold = -threshold
-                                }
-                            }
-                        )
-                    }
-                    price = price+threshold                        
-                }
-            ) #end type switch
-        } else {
-            stop(paste("Threshold may only be applied to a limit, stop or iceberg order type",ordertype,threshold))
-        }
-    }
-
-    if(is.null(threshold)) threshold=NA  #NA is not ignored like NULL is 
-
-    if(!length(grep(status,c("open", "closed", "canceled", "revoked","replaced",'rejected')))==1) stop(paste("order status:",status,' must be one of "open", "closed", "canceled", "revoked", "replaced", or "rejected"'))
-    # TODO do we need to check for collision, and increment timestamp?  or alternately update?
-
-    # subset by time and symbol
-    if(!is.null(timestamp)& length(timestamp)>=1){
-        timespan <- format(timestamp, "::%Y-%m-%d %H:%M:%OS6")
+      #we have a threshold set on a stop* order, process it
+      switch(ordertype,
+             limit =, 
+             iceberg =, 
+             stoplimit =, 
+             stoptrailing = {
+               if(isTRUE(tmult))
+               {
+                 threshold = price*threshold
+                 tmult=FALSE
+               } 
+               if(!is.null(side))
+               {
+                 switch(ordertype,
+                        limit = {
+                          if((qty %in% c('all','trigger')) && side == 'long' || !(qty %in% c('all','trigger')) && as.numeric(qty) < 0) # SELL
+                          {
+                            #this is a limit exit, so it will sell *higher* than the current market
+                            if(threshold < 0) threshold = -threshold
+                          }
+                          else    # BUY
+                          {
+                            #this is a limit exit, so it will buy *lower* than the current market
+                            if(threshold > 0) threshold = -threshold
+                          }
+                        },
+                        stoplimit =,
+                        stoptrailing = {
+                          if((qty %in% c('all','trigger')) && side == 'long' || !(qty %in% c('all','trigger')) && as.numeric(qty) < 0) # SELL
+                          {
+                            #this is a stop exit, so it will sell *lower* than the current market
+                            if(threshold > 0) threshold = -threshold
+                          }
+                          else    # BUY
+                          {
+                            #this is a stop exit, so it will buy *higher* than the current market
+                            if(threshold < 0) threshold = -threshold
+                          }
+                        }
+                 )
+               }
+               price = price+threshold                        
+             }
+      ) #end type switch
     } else {
-        # construct the timespan of the entire series
-        timespan <- paste(format(index(first(orderbook)), "%Y-%m-%d %H:%M:%OS6"),
-                          format(index( last(orderbook)), "%Y-%m-%d %H:%M:%OS6"), sep="::")
+      stop(paste("Threshold may only be applied to a limit, stop or iceberg order type",ordertype,threshold))
     }
-
-    statustimestamp=NA # new orders don't have a status time
-
-    # time in force
-    if(time.in.force != '')
+  }
+  
+  if(is.null(threshold)) threshold=NA  #NA is not ignored like NULL is 
+  
+  if(!length(grep(status,c("open", "closed", "canceled", "revoked","replaced",'rejected')))==1) stop(paste("order status:",status,' must be one of "open", "closed", "canceled", "revoked", "replaced", or "rejected"'))
+  # TODO do we need to check for collision, and increment timestamp?  or alternately update?
+  
+  # subset by time and symbol
+  if(!is.null(timestamp)& length(timestamp)>=1){
+    timespan <- format(timestamp, "::%Y-%m-%d %H:%M:%OS6")
+  } else {
+    # construct the timespan of the entire series
+    timespan <- paste(format(index(first(orderbook)), "%Y-%m-%d %H:%M:%OS6"),
+                      format(index( last(orderbook)), "%Y-%m-%d %H:%M:%OS6"), sep="::")
+  }
+  
+  statustimestamp=NA # new orders don't have a status time
+  
+  # time in force
+  if(time.in.force != '')
+  {
+    if(time.in.force == 'GTC')
+      time.in.force <- ''
+    else
     {
-        if(time.in.force == 'GTC')
-            time.in.force <- ''
-        else
-        {
-            if(is.numeric(time.in.force))
-                time.in.force <- as.POSIXct(timestamp) + time.in.force
-
-            time.in.force <- format(time.in.force, "%Y-%m-%d %H:%M:%OS")
-        }
+      if(is.numeric(time.in.force))
+        time.in.force <- as.POSIXct(timestamp) + time.in.force
+      
+      time.in.force <- format(time.in.force, "%Y-%m-%d %H:%M:%OS")
     }
-
-    #set up the other parameters
-    if (!length(qty)==length(price)) qty <- rep(qty,length(price))
-    if (!length(ordertype)==length(price)) ordertype <- rep(ordertype,length(price))
-    if (!length(threshold)==length(price)) threshold <- rep(threshold,length(price))
-    #if (!length(param)==length(price)) param <- rep(param,length(price))
-
-    # insert new order
-    if(is.timeBased(timestamp)) ordertime<-timestamp+delay
-    else ordertime<-as.POSIXct(timestamp)+delay
-    orders<-NULL
-    for (i in 1:length(price)) {
-        if(is.null(prefer[i])) prefer[i] = ''
-
-        if(qty[i] != 'all' || getPosQty(portfolio, symbol, timestamp) != 0)
-        {
-            neworder <- xts(t(c(as.character(qty[i]), price[i], ordertype[i], 
-                side, threshold[i], status, statustimestamp, prefer[i],
-                orderset[i], TxnFees, label, time.in.force)), order.by=ordertime,
-                dimnames=list(NULL, c("Order.Qty", "Order.Price", "Order.Type",
-                  "Order.Side", "Order.Threshold", "Order.Status", "Order.StatusTime",
-                  "Prefer", "Order.Set", "Txn.Fees", "Rule", "Time.In.Force")))
-                  
-            if(is.null(orders)) orders<-neworder
-            else orders <- rbind(orders,neworder)
-        }
-    }
-
-    if(!is.null(orders) && ncol(orders)!=12) {
-        print("bad order(s):")
-        print(orders)
-        return()
-    }
-
-    if(is.numeric(qty)) qtysign <- sign(drop(coredata(qty)))
-    else qtysign <- NULL
+  }
+  
+  #set up the other parameters
+  if (!length(qty)==length(price)) qty <- rep(qty,length(price))
+  if (!length(ordertype)==length(price)) ordertype <- rep(ordertype,length(price))
+  if (!length(threshold)==length(price)) threshold <- rep(threshold,length(price))
+  #if (!length(param)==length(price)) param <- rep(param,length(price))
+  
+  # insert new order
+  if(is.timeBased(timestamp)) ordertime<-timestamp+delay
+  else ordertime<-as.POSIXct(timestamp)+delay
+  orders<-NULL
+  for (i in 1:length(price)) {
+    if(is.null(prefer[i])) prefer[i] = ''
     
-    if(!isTRUE(return)){
-        if(isTRUE(replace)) {
-            updateOrders(portfolio=portfolio, 
-                         symbol=symbol,
-                         timespan=timespan, 
-                         side=side, 
-                         qtysign=qtysign,
-                         orderset=orderset,
-                         oldstatus="open", 
-                         newstatus="replaced", 
-                         statustimestamp=timestamp)
-        }
-        # get order book
-        if(!is.null(orders))
-        {
-            orderbook <- getOrderBook(portfolio)
-            orderbook[[portfolio]][[symbol]]<-rbind(orderbook[[portfolio]][[symbol]],orders)
-            # assign order book back into place (do we need a non-exported "put" function?)
-            assign(paste("order_book",portfolio,sep='.'),orderbook,envir=.strategy)
-            rm(orderbook)
-        }
-        return()
-    } else {
-        return(orders)
+    if(qty[i] != 'all' || getPosQty(portfolio, symbol, timestamp) != 0)
+    {
+      neworder <- xts(t(c(as.character(qty[i]), price[i], ordertype[i], 
+                          side, threshold[i], status, statustimestamp, prefer[i],
+                          orderset[i], TxnFees, label, time.in.force)), order.by=ordertime,
+                      dimnames=list(NULL, c("Order.Qty", "Order.Price", "Order.Type",
+                                            "Order.Side", "Order.Threshold", "Order.Status", "Order.StatusTime",
+                                            "Prefer", "Order.Set", "Txn.Fees", "Rule", "Time.In.Force")))
+      
+      if(is.null(orders)) orders<-neworder
+      else orders <- rbind(orders,neworder)
     }
+  }
+  
+  if(!is.null(orders) && ncol(orders)!=12) {
+    print("bad order(s):")
+    print(orders)
+    return()
+  }
+  
+  if(is.numeric(qty)) qtysign <- sign(drop(coredata(qty)))
+  else qtysign <- NULL
+  
+  if(!isTRUE(return)){
+    if(isTRUE(replace)) {
+      updateOrders(portfolio=portfolio, 
+                   symbol=symbol,
+                   timespan=timespan, 
+                   side=side, 
+                   qtysign=qtysign,
+                   orderset=orderset,
+                   label=label,
+                   oldstatus="open", 
+                   newstatus="replaced", 
+                   statustimestamp=timestamp)
+    }
+    # get order book
+    if(!is.null(orders))
+    {
+      orderbook <- getOrderBook(portfolio)
+      orderbook[[portfolio]][[symbol]]<-rbind(orderbook[[portfolio]][[symbol]],orders)
+      # assign order book back into place (do we need a non-exported "put" function?)
+      assign(paste("order_book",portfolio,sep='.'),orderbook,envir=.strategy)
+      rm(orderbook)
+    }
+    return()
+  } else {
+    return(orders)
+  }
 }
 
 #' update an order or orders
@@ -498,51 +504,53 @@ updateOrders <- function(portfolio,
                          side=NULL, 
                          qtysign=NULL, 
                          orderset=NULL,
+                         label=NULL,
                          oldstatus="open", 
                          newstatus, 
                          statustimestamp 
-                 )
+)
 { 
-    #data quality checks
-    if(!is.null(oldstatus) && !length(grep(oldstatus,c("open", "closed", "canceled", "revoked","replaced",'rejected')))==1) 
-        stop(paste("old order status:",oldstatus,' must be one of "open", "closed", "canceled", "revoked", "replaced", or "rejected"'))
-    if(!length(grep(newstatus,c("open", "closed", "canceled", "revoked","replaced",'rejected')))==1) 
-        stop(paste("new order status:",newstatus,' must be one of "open", "closed", "canceled", "revoked", "replaced", or "rejected"'))
-    if(!is.null(side) && !length(grep(side,c('long','short')))==1) 
-        stop(paste("side:",side," must be one of 'long' or 'short'"))
-    if(!is.null(qtysign) && (qtysign != -1 && qtysign != 1 && qtysign != 0))
-        stop(paste("qtysign:",qtysign," must be one of NULL, -1, 0, or 1"))
-    if(!is.null(ordertype) && is.na(charmatch(ordertype,c("market","limit","stoplimit","stoptrailing","iceberg")))) 
-        stop(paste("ordertype:",ordertype,' must be one of "market","limit","stoplimit","stoptrailing" or "iceberg"'))
-    if(!is.null(orderset) && newstatus=='replaced'){
-        #replace any outstanding orders for this orderset
-        ordertype=NULL
-        side=NULL
-        qtysign=NULL    
-    }
-
-    if(is.na(orderset)) orderset=NULL
-    # need the ability to pass a range like we do in blotter
-    updatedorders<-getOrders(portfolio=portfolio, 
-                             symbol=symbol, 
-                             status=oldstatus, 
-                             timespan=timespan, 
-                             ordertype=ordertype, 
-                             side=side, 
-                             qtysign=qtysign,
-                             orderset=orderset,
-                             which.i=TRUE) 
-    if(length(updatedorders)>=1){
-        # get order book 
-        #TODO this gets the order book again after it was already retrieved by getOrdersByStatus.  
-        # at some point, we should eliminate the double get
-        orderbook <- getOrderBook(portfolio)
-        
-        orderbook[[portfolio]][[symbol]][updatedorders,"Order.Status"]<-newstatus
-        orderbook[[portfolio]][[symbol]][updatedorders,"Order.StatusTime"]<- as.character(as.POSIXlt(statustimestamp, Sys.getenv('TZ')))
-        # assign order book back into place (do we need a non-exported "put" function?)
-        assign(paste("order_book",portfolio,sep='.'),orderbook,envir=.strategy)
-    }
+  #data quality checks
+  if(!is.null(oldstatus) && !length(grep(oldstatus,c("open", "closed", "canceled", "revoked","replaced",'rejected')))==1) 
+    stop(paste("old order status:",oldstatus,' must be one of "open", "closed", "canceled", "revoked", "replaced", or "rejected"'))
+  if(!length(grep(newstatus,c("open", "closed", "canceled", "revoked","replaced",'rejected')))==1) 
+    stop(paste("new order status:",newstatus,' must be one of "open", "closed", "canceled", "revoked", "replaced", or "rejected"'))
+  if(!is.null(side) && !length(grep(side,c('long','short')))==1) 
+    stop(paste("side:",side," must be one of 'long' or 'short'"))
+  if(!is.null(qtysign) && (qtysign != -1 && qtysign != 1 && qtysign != 0))
+    stop(paste("qtysign:",qtysign," must be one of NULL, -1, 0, or 1"))
+  if(!is.null(ordertype) && is.na(charmatch(ordertype,c("market","limit","stoplimit","stoptrailing","iceberg")))) 
+    stop(paste("ordertype:",ordertype,' must be one of "market","limit","stoplimit","stoptrailing" or "iceberg"'))
+  if(!is.null(orderset) && newstatus=='replaced'){
+    #replace any outstanding orders for this orderset
+    ordertype=NULL
+    side=NULL
+    qtysign=NULL    
+  }
+  
+  if(is.na(orderset)) orderset=NULL
+  # need the ability to pass a range like we do in blotter
+  updatedorders<-getOrders(portfolio=portfolio, 
+                           symbol=symbol, 
+                           status=oldstatus, 
+                           timespan=timespan, 
+                           ordertype=ordertype, 
+                           side=side, 
+                           qtysign=qtysign,
+                           orderset=orderset,
+                           label=label,
+                           which.i=TRUE) 
+  if(length(updatedorders)>=1){
+    # get order book 
+    #TODO this gets the order book again after it was already retrieved by getOrdersByStatus.  
+    # at some point, we should eliminate the double get
+    orderbook <- getOrderBook(portfolio)
+    
+    orderbook[[portfolio]][[symbol]][updatedorders,"Order.Status"]<-newstatus
+    orderbook[[portfolio]][[symbol]][updatedorders,"Order.StatusTime"]<- as.character(as.POSIXlt(statustimestamp, Sys.getenv('TZ')))
+    # assign order book back into place (do we need a non-exported "put" function?)
+    assign(paste("order_book",portfolio,sep='.'),orderbook,envir=.strategy)
+  }
 }
 
 ###############################################################################
